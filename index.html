@@ -13,7 +13,7 @@ canvas{display:block;width:100%;height:100%}.hint{color:var(--muted);font-size:1
 h2{font-size:15px;margin:0 0 12px}.btn{border:0;border-radius:9px;padding:10px 13px;background:var(--blue);color:white;font-weight:650;cursor:pointer}.btn.secondary{background:#eaf0fa;color:#36527e}.btn.dark{background:#34445e}.btn:disabled{opacity:.45;cursor:not-allowed}
 input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-top:10px}.status{margin-top:10px;padding:9px 10px;background:var(--pale);border-radius:9px;color:#53647d;font-size:12px;min-height:35px}
 .search{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;margin-bottom:10px;font:inherit}
-.list{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}.item{padding:9px 10px;border-bottom:1px solid #edf1f6}.item:last-child{border:0}.itemtop{display:flex;align-items:center;gap:8px}.itemtop label{flex:1;overflow-wrap:anywhere;font-size:12px}.item input[type=range]{width:100%;accent-color:var(--blue)}.small{font-size:11px;color:var(--muted);min-width:36px;text-align:right}
+.list{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}.more{width:100%;margin-top:8px}.item{padding:9px 10px;border-bottom:1px solid #edf1f6}.item:last-child{border:0}.itemtop{display:flex;align-items:center;gap:8px}.itemtop label{flex:1;overflow-wrap:anywhere;font-size:12px}.item input[type=range]{width:100%;accent-color:var(--blue)}.small{font-size:11px;color:var(--muted);min-width:36px;text-align:right}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.actions .btn{font-size:12px;padding:10px 7px}.warning{border-left:3px solid #e3b45b;padding:9px 10px;background:#fffaf0;color:#795d2c;border-radius:7px;font-size:11px;line-height:1.5;margin-top:10px}
 @media(max-width:760px){main{grid-template-columns:1fr;padding:10px}.viewer{height:340px}.panel{padding:12px}}
 </style>
@@ -36,7 +36,7 @@ input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-to
  <div class="row between"><h2>Morph Targets</h2><span class="hint" id="count">0 targets</span></div>
  <input class="search" id="search" placeholder="Search morph target…">
  <div class="row between" style="margin-bottom:9px"><button class="btn secondary" id="selectAll" disabled>Select all</button><button class="btn secondary" id="clearAll" disabled>Clear selection</button></div>
- <div class="list" id="targets"><div class="item hint">Load a VRM to inspect its morph targets.</div></div>
+ <div class="list" id="targets"><div class="item hint">Load a VRM to inspect its morph targets.</div></div>\n <button class="btn secondary more" id="showMore" hidden>Show more morph targets</button>
  <div class="actions">
   <button class="btn" id="bakeSelected" disabled>Bake selected</button>
   <button class="btn dark" id="bakeAll" disabled>Batch bake all</button>
@@ -58,20 +58,19 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 const $=id=>document.getElementById(id);
 const canvas=$('view'), renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true,powerPreference:'low-power'});
 // Large-model mode: cap render resolution to reduce GPU memory and heat on Android.
-renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25)); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
+let previewDpr=Math.min(window.devicePixelRatio||1,.85);renderer.setPixelRatio(previewDpr); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
 const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(32,1,.01,100); camera.position.set(0,1.25,3.5);
 scene.add(new THREE.HemisphereLight(0xffffff,0x8999b5,2));
 const key=new THREE.DirectionalLight(0xffffff,2.1);key.position.set(2,4,3);scene.add(key);
 const floor=new THREE.GridHelper(5,20,0xc8d5e5,0xe0e8f2);floor.position.y=-.02;scene.add(floor);
 let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5;
 const root=new THREE.Group();scene.add(root);
-let renderQueued=false;
-function requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(()=>{renderQueued=false;renderer.render(scene,camera)})}
+let renderQueued=false;\nfunction setPreviewQuality(value){if(previewDpr===value)return;previewDpr=value;renderer.setPixelRatio(value);renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);requestRender()}\nfunction requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(()=>{renderQueued=false;renderer.render(scene,camera)})}
 function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRender()}
 new ResizeObserver(resize).observe(canvas);
 requestRender();
-canvas.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-canvas.addEventListener('pointerup',()=>drag=false);
+canvas.addEventListener('pointerdown',e=>{drag=true;setPreviewQuality(.5);lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointerup',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});canvas.addEventListener('pointercancel',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});
 canvas.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.009;rotX=Math.max(-.6,Math.min(.6,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY;root.rotation.set(rotX,rotY,0);requestRender()});
 canvas.addEventListener('wheel',e=>{zoom=Math.max(1.2,Math.min(8,zoom+e.deltaY*.003));camera.position.z=zoom;requestRender()});
 $('reset').onclick=()=>{rotY=rotX=0;root.rotation.set(0,0,0);zoom=3.5;camera.position.set(0,1.25,zoom);requestRender()};
@@ -81,12 +80,9 @@ function scan(){
  root.traverse(o=>{if(!o.isMesh||!o.morphTargetDictionary||!o.morphTargetInfluences)return;
   for(const [name,index] of Object.entries(o.morphTargetDictionary))entries.push({mesh:o,name,index,key:entries.length});
  });
- $('count').textContent=entries.length+' targets';$('modelInfo').textContent=vrm?.meta?.name||'VRM loaded';
- renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll'].forEach(id=>$(id).disabled=!entries.length);
+ $('count').textContent=entries.length+' targets';$('modelInfo').textContent=vrm?.meta?.name||'VRM loaded';\n visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll'].forEach(id=>$(id).disabled=!entries.length);
 }
-function renderList(){
- const q=$('search').value.toLowerCase();$('targets').innerHTML='';
- entries.filter(e=>e.name.toLowerCase().includes(q)).forEach(e=>{
+let visibleTargetLimit=40;\nfunction renderList(){\n const q=$('search').value.toLowerCase();$('targets').innerHTML='';\n const filtered=entries.filter(e=>e.name.toLowerCase().includes(q));\n filtered.slice(0,visibleTargetLimit).forEach(e=>{
   const row=document.createElement('div');row.className='item';
   const top=document.createElement('div');top.className='itemtop';
   const cb=document.createElement('input');cb.type='checkbox';cb.dataset.key=e.key;cb.checked=!!e.selected;
@@ -96,10 +92,8 @@ function renderList(){
   top.append(cb,label,val);row.append(top);
   const range=document.createElement('input');range.type='range';range.min=0;range.max=100;range.value=Math.round((e.mesh.morphTargetInfluences[e.index]||0)*100);
   range.oninput=()=>{e.mesh.morphTargetInfluences[e.index]=Number(range.value)/100;val.textContent=range.value+'%';requestRender()};
-  row.append(range);$('targets').append(row);
- });
-}
-$('search').oninput=renderList;
+  row.append(range);$('targets').append(row);\n });\n const more=$('showMore');more.hidden=filtered.length<=visibleTargetLimit;more.textContent='Show more ('+(filtered.length-visibleTargetLimit)+' remaining)';\n}
+$('search').oninput=()=>{visibleTargetLimit=40;renderList()};$('showMore').onclick=()=>{visibleTargetLimit+=40;renderList()};
 $('selectAll').onclick=()=>{entries.forEach(e=>e.selected=true);renderList()};
 $('clearAll').onclick=()=>{entries.forEach(e=>e.selected=false);renderList()};
 $('resetMorph').onclick=()=>{entries.forEach(e=>e.mesh.morphTargetInfluences[e.index]=0);renderList();requestRender()};
@@ -117,7 +111,7 @@ $('file').onchange=async e=>{
   vrm.scene.position.sub(center);camera.position.set(0,Math.max(1,size.y*.52),Math.max(2.3,size.y*2.1));zoom=camera.position.z;
   scan();$('reset').disabled=false;$('download').disabled=true;
   requestRender();
-  setStatus('Loaded '+file.name+' ('+sizeMB.toFixed(1)+' MB). '+(large?'Large VRM Mode is active: reduced preview resolution and on-demand rendering. ':'')+'Morph targets are ready. Very large files may still exceed your phone’s available RAM.');
+  setStatus('Loaded '+file.name+' ('+sizeMB.toFixed(1)+' MB). Preview uses reduced resolution; dragging temporarily lowers it further for smoother rotation. Morph list shows 40 entries at a time. Large files can still exceed available RAM.');
  }catch(err){console.error(err);setStatus('Load failed: '+err.message)}
 };
 function bake(list){
