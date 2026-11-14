@@ -36,7 +36,8 @@ input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-to
  <div class="row between"><h2>Morph Targets</h2><span class="hint" id="count">0 targets</span></div>
  <input class="search" id="search" placeholder="Search morph target…">
  <div class="row between" style="margin-bottom:9px"><button class="btn secondary" id="selectAll" disabled>Select all</button><button class="btn secondary" id="clearAll" disabled>Clear selection</button></div>
- <div class="list" id="targets"><div class="item hint">Load a VRM to inspect its morph targets.</div></div>\n <button class="btn secondary more" id="showMore" hidden>Show more morph targets</button>
+ <div class="list" id="targets"><div class="item hint">Load a VRM to inspect its morph targets.</div></div>
+ <button class="btn secondary more" id="showMore" hidden>Show more morph targets</button>
  <div class="actions">
   <button class="btn" id="bakeSelected" disabled>Bake selected</button>
   <button class="btn dark" id="bakeAll" disabled>Batch bake all</button>
@@ -56,21 +57,23 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 const $=id=>document.getElementById(id);
-const canvas=$('view'), renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true,powerPreference:'low-power'});
-// Large-model mode: cap render resolution to reduce GPU memory and heat on Android.
-let previewDpr=Math.min(window.devicePixelRatio||1,.85);renderer.setPixelRatio(previewDpr); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
+const canvas=$('view'), renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:'high-performance'});
+// Balanced mobile preview: sharper when idle, temporarily lighter while dragging.
+let previewDpr=Math.min(window.devicePixelRatio||1,1.35);renderer.setPixelRatio(previewDpr); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
 const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(32,1,.01,100); camera.position.set(0,1.25,3.5);
 scene.add(new THREE.HemisphereLight(0xffffff,0x8999b5,2));
 const key=new THREE.DirectionalLight(0xffffff,2.1);key.position.set(2,4,3);scene.add(key);
 const floor=new THREE.GridHelper(5,20,0xc8d5e5,0xe0e8f2);floor.position.y=-.02;scene.add(floor);
 let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5;
 const root=new THREE.Group();scene.add(root);
-let renderQueued=false;\nfunction setPreviewQuality(value){if(previewDpr===value)return;previewDpr=value;renderer.setPixelRatio(value);renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);requestRender()}\nfunction requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(()=>{renderQueued=false;renderer.render(scene,camera)})}
+let renderQueued=false;
+function setPreviewQuality(value){if(previewDpr===value)return;previewDpr=value;renderer.setPixelRatio(value);renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);requestRender()}
+function requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(()=>{renderQueued=false;renderer.render(scene,camera)})}
 function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRender()}
 new ResizeObserver(resize).observe(canvas);
 requestRender();
-canvas.addEventListener('pointerdown',e=>{drag=true;setPreviewQuality(.5);lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-canvas.addEventListener('pointerup',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});canvas.addEventListener('pointercancel',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});
+canvas.addEventListener('pointerdown',e=>{drag=true;setPreviewQuality(.8);lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointerup',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,1.35))});canvas.addEventListener('pointercancel',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});
 canvas.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.009;rotX=Math.max(-.6,Math.min(.6,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY;root.rotation.set(rotX,rotY,0);requestRender()});
 canvas.addEventListener('wheel',e=>{zoom=Math.max(1.2,Math.min(8,zoom+e.deltaY*.003));camera.position.z=zoom;requestRender()});
 $('reset').onclick=()=>{rotY=rotX=0;root.rotation.set(0,0,0);zoom=3.5;camera.position.set(0,1.25,zoom);requestRender()};
@@ -80,9 +83,14 @@ function scan(){
  root.traverse(o=>{if(!o.isMesh||!o.morphTargetDictionary||!o.morphTargetInfluences)return;
   for(const [name,index] of Object.entries(o.morphTargetDictionary))entries.push({mesh:o,name,index,key:entries.length});
  });
- $('count').textContent=entries.length+' targets';$('modelInfo').textContent=vrm?.meta?.name||'VRM loaded';\n visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll'].forEach(id=>$(id).disabled=!entries.length);
+ $('count').textContent=entries.length+' targets';$('modelInfo').textContent=vrm?.meta?.name||'VRM loaded';
+ visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll'].forEach(id=>$(id).disabled=!entries.length);
 }
-let visibleTargetLimit=40;\nfunction renderList(){\n const q=$('search').value.toLowerCase();$('targets').innerHTML='';\n const filtered=entries.filter(e=>e.name.toLowerCase().includes(q));\n filtered.slice(0,visibleTargetLimit).forEach(e=>{
+let visibleTargetLimit=40;
+function renderList(){
+ const q=$('search').value.toLowerCase();$('targets').innerHTML='';
+ const filtered=entries.filter(e=>e.name.toLowerCase().includes(q));
+ filtered.slice(0,visibleTargetLimit).forEach(e=>{
   const row=document.createElement('div');row.className='item';
   const top=document.createElement('div');top.className='itemtop';
   const cb=document.createElement('input');cb.type='checkbox';cb.dataset.key=e.key;cb.checked=!!e.selected;
@@ -92,7 +100,10 @@ let visibleTargetLimit=40;\nfunction renderList(){\n const q=$('search').value.t
   top.append(cb,label,val);row.append(top);
   const range=document.createElement('input');range.type='range';range.min=0;range.max=100;range.value=Math.round((e.mesh.morphTargetInfluences[e.index]||0)*100);
   range.oninput=()=>{e.mesh.morphTargetInfluences[e.index]=Number(range.value)/100;val.textContent=range.value+'%';requestRender()};
-  row.append(range);$('targets').append(row);\n });\n const more=$('showMore');more.hidden=filtered.length<=visibleTargetLimit;more.textContent='Show more ('+(filtered.length-visibleTargetLimit)+' remaining)';\n}
+  row.append(range);$('targets').append(row);
+ });
+ const more=$('showMore');more.hidden=filtered.length<=visibleTargetLimit;more.textContent='Show more ('+(filtered.length-visibleTargetLimit)+' remaining)';
+}
 $('search').oninput=()=>{visibleTargetLimit=40;renderList()};$('showMore').onclick=()=>{visibleTargetLimit+=40;renderList()};
 $('selectAll').onclick=()=>{entries.forEach(e=>e.selected=true);renderList()};
 $('clearAll').onclick=()=>{entries.forEach(e=>e.selected=false);renderList()};
@@ -111,7 +122,7 @@ $('file').onchange=async e=>{
   vrm.scene.position.sub(center);camera.position.set(0,Math.max(1,size.y*.52),Math.max(2.3,size.y*2.1));zoom=camera.position.z;
   scan();$('reset').disabled=false;$('download').disabled=true;
   requestRender();
-  setStatus('Loaded '+file.name+' ('+sizeMB.toFixed(1)+' MB). Preview uses reduced resolution; dragging temporarily lowers it further for smoother rotation. Morph list shows 40 entries at a time. Large files can still exceed available RAM.');
+  setStatus('Loaded '+file.name+' ('+(file.size/1048576).toFixed(1)+' MB). Preview is sharper when idle and temporarily lowers render resolution while dragging. Morph list shows 40 entries at a time. Large files can still exceed available RAM.');
  }catch(err){console.error(err);setStatus('Load failed: '+err.message)}
 };
 function bake(list){
