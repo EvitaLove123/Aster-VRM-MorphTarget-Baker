@@ -56,22 +56,25 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 const $=id=>document.getElementById(id);
-const canvas=$('view'), renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
+const canvas=$('view'), renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true,powerPreference:'low-power'});
+// Large-model mode: cap render resolution to reduce GPU memory and heat on Android.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25)); renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);
 const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(32,1,.01,100); camera.position.set(0,1.25,3.5);
 scene.add(new THREE.HemisphereLight(0xffffff,0x8999b5,2));
 const key=new THREE.DirectionalLight(0xffffff,2.1);key.position.set(2,4,3);scene.add(key);
 const floor=new THREE.GridHelper(5,20,0xc8d5e5,0xe0e8f2);floor.position.y=-.02;scene.add(floor);
 let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5;
 const root=new THREE.Group();scene.add(root);
-function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+let renderQueued=false;
+function requestRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(()=>{renderQueued=false;renderer.render(scene,camera)})}
+function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRender()}
 new ResizeObserver(resize).observe(canvas);
-function frame(){requestAnimationFrame(frame);renderer.render(scene,camera)}frame();
+requestRender();
 canvas.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
 canvas.addEventListener('pointerup',()=>drag=false);
-canvas.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.009;rotX=Math.max(-.6,Math.min(.6,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY;root.rotation.set(rotX,rotY,0)});
-canvas.addEventListener('wheel',e=>{zoom=Math.max(1.2,Math.min(8,zoom+e.deltaY*.003));camera.position.z=zoom});
-$('reset').onclick=()=>{rotY=rotX=0;root.rotation.set(0,0,0);zoom=3.5;camera.position.set(0,1.25,zoom)};
+canvas.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.009;rotX=Math.max(-.6,Math.min(.6,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY;root.rotation.set(rotX,rotY,0);requestRender()});
+canvas.addEventListener('wheel',e=>{zoom=Math.max(1.2,Math.min(8,zoom+e.deltaY*.003));camera.position.z=zoom;requestRender()});
+$('reset').onclick=()=>{rotY=rotX=0;root.rotation.set(0,0,0);zoom=3.5;camera.position.set(0,1.25,zoom);requestRender()};
 function setStatus(s){$('status').textContent=s}
 function scan(){
  entries=[];
@@ -92,14 +95,14 @@ function renderList(){
   const val=document.createElement('span');val.className='small';val.textContent=Math.round((e.mesh.morphTargetInfluences[e.index]||0)*100)+'%';
   top.append(cb,label,val);row.append(top);
   const range=document.createElement('input');range.type='range';range.min=0;range.max=100;range.value=Math.round((e.mesh.morphTargetInfluences[e.index]||0)*100);
-  range.oninput=()=>{e.mesh.morphTargetInfluences[e.index]=Number(range.value)/100;val.textContent=range.value+'%'};
+  range.oninput=()=>{e.mesh.morphTargetInfluences[e.index]=Number(range.value)/100;val.textContent=range.value+'%';requestRender()};
   row.append(range);$('targets').append(row);
  });
 }
 $('search').oninput=renderList;
 $('selectAll').onclick=()=>{entries.forEach(e=>e.selected=true);renderList()};
 $('clearAll').onclick=()=>{entries.forEach(e=>e.selected=false);renderList()};
-$('resetMorph').onclick=()=>{entries.forEach(e=>e.mesh.morphTargetInfluences[e.index]=0);renderList()};
+$('resetMorph').onclick=()=>{entries.forEach(e=>e.mesh.morphTargetInfluences[e.index]=0);renderList();requestRender()};
 $('file').onchange=async e=>{
  const file=e.target.files[0];if(!file)return;
  setStatus('Loading VRM…');$('modelInfo').textContent=file.name;
@@ -107,12 +110,14 @@ $('file').onchange=async e=>{
   const loader=new GLTFLoader();loader.register(parser=>new VRMLoaderPlugin(parser));
   const buffer=await file.arrayBuffer();const gltf=await loader.parseAsync(buffer,'');
   gltfData=gltf;vrm=gltf.userData.vrm;if(!vrm)throw new Error('VRM extension was not recognized.');
-  if(root.children.length)root.remove(...root.children);root.add(vrm.scene);
+  if(root.children.length){for(const old of [...root.children]){old.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){for(const v of Object.values(m))if(v&&v.isTexture)v.dispose();m.dispose()}}});root.remove(old)}}
+  history=[];$('undo').disabled=true;root.add(vrm.scene);
   VRMUtils.rotateVRM0(vrm);
   const box=new THREE.Box3().setFromObject(vrm.scene),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
   vrm.scene.position.sub(center);camera.position.set(0,Math.max(1,size.y*.52),Math.max(2.3,size.y*2.1));zoom=camera.position.z;
   scan();$('reset').disabled=false;$('download').disabled=true;
-  setStatus('Loaded '+file.name+'. Morph targets are ready for preview and baking.');
+  requestRender();
+  setStatus('Loaded '+file.name+' ('+sizeMB.toFixed(1)+' MB). '+(large?'Large VRM Mode is active: reduced preview resolution and on-demand rendering. ':'')+'Morph targets are ready. Very large files may still exceed your phone’s available RAM.');
  }catch(err){console.error(err);setStatus('Load failed: '+err.message)}
 };
 function bake(list){
@@ -128,17 +133,17 @@ function bake(list){
    const weight=mesh.morphTargetInfluences[e.index]||0;
    for(let i=0;i<base.length;i++)base[i]+=attr.array[i]*weight;
   }
-  position.needsUpdate=true;
+  position.needsUpdate=true;geo.computeBoundingSphere();
   // Morph targets are retained in this in-memory preview; baking into a clone while removing targets
   // requires remapping every primitive and VRM expression bind in the original glTF document.
   targets.forEach(e=>mesh.morphTargetInfluences[e.index]=0);
  }
  history.push(snapshots);$('undo').disabled=false;
- setStatus('Applied selected morph shape(s) to base mesh in the preview. Original morph channels are retained until a VRM-safe export/remap pass is implemented.');
+ requestRender();setStatus('Applied selected morph shape(s) to base mesh in the preview. Original morph channels are retained until a VRM-safe export/remap pass is implemented.');
 }
 $('bakeSelected').onclick=()=>bake(entries.filter(e=>e.selected));
 $('bakeAll').onclick=()=>bake(entries);
-$('undo').onclick=()=>{const snap=history.pop();if(!snap)return;snap.forEach(s=>{const a=s.geo.attributes.position;a.array.set(s.before);a.needsUpdate=true});scan();$('undo').disabled=!history.length;setStatus('Last preview bake was undone.')};
+$('undo').onclick=()=>{const snap=history.pop();if(!snap)return;snap.forEach(s=>{const a=s.geo.attributes.position;a.array.set(s.before);a.needsUpdate=true;s.geo.computeBoundingSphere()});scan();requestRender();$('undo').disabled=!history.length;setStatus('Last preview bake was undone.')};
 $('download').onclick=()=>setStatus('VRM export is not enabled in this build; no file was generated.');
 </script>
 </body></html>
