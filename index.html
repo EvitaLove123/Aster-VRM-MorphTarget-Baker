@@ -138,6 +138,7 @@ function allMeshes(){const a=[];if(vrm)vrm.scene.traverse(o=>{if(o.isMesh)a.push
 function renderMeshStates(){
  const host=$('meshStates');host.innerHTML='';
  stateMeshes=allMeshes();
+ stateMeshes.forEach(m=>{if(!meshPresets.normal.has(m.uuid))meshPresets.normal.set(m.uuid,m.visible);if(!meshPresets.mermaid.has(m.uuid))meshPresets.mermaid.set(m.uuid,m.visible)});
  stateMeshes.forEach((m,i)=>{
   const row=document.createElement('div');row.className='item';
   const title=document.createElement('div');title.className='itemtop';
