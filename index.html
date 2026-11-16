@@ -30,7 +30,16 @@ input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-to
   <button class="btn secondary" id="resetMorph" disabled>Reset weights</button>
  </div>
  <div class="status" id="status">Choose a .vrm file. The model is processed locally in this browser.</div>
- <p class="hint">Drag to rotate · Pinch / wheel to zoom. Large VRM files may take time on mobile devices.</p>
+ <div class="panel" style="margin-top:12px;background:#f8fbff">
+  <h2>Create a New Morph Target</h2>
+  <p class="hint">Choose a name, then enable Sculpt and drag over the model to push vertices along their surface normals. This creates a new target on the mesh you touch.</p>
+  <input id="newName" class="search" value="Custom_Morph_01" placeholder="Morph target name">
+  <div class="row"><label class="hint" for="brushRadius">Brush radius</label><input id="brushRadius" type="range" min="0.015" max="0.3" step="0.005" value="0.09"><span class="small" id="radiusVal">0.09</span></div>
+  <div class="row"><label class="hint" for="brushStrength">Strength</label><input id="brushStrength" type="range" min="0.001" max="0.08" step="0.001" value="0.018"><span class="small" id="strengthVal">0.018</span></div>
+  <div class="row toolbar"><button class="btn" id="sculptToggle" disabled>Enable Sculpt</button><button class="btn secondary" id="finishSculpt" disabled>Finish target</button></div>
+  <div class="hint" id="sculptInfo">Load a VRM to begin sculpting.</div>
+ </div>
+ <p class="hint">Drag to rotate · Pinch / wheel to zoom. In Sculpt mode, drag directly on the model to edit vertices.</p>
 </section>
 <section class="panel">
  <div class="row between"><h2>Morph Targets</h2><span class="hint" id="count">0 targets</span></div>
@@ -64,7 +73,7 @@ const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(32,1,.01,100);
 scene.add(new THREE.HemisphereLight(0xffffff,0x8999b5,2));
 const key=new THREE.DirectionalLight(0xffffff,2.1);key.position.set(2,4,3);scene.add(key);
 const floor=new THREE.GridHelper(5,20,0xc8d5e5,0xe0e8f2);floor.position.y=-.02;scene.add(floor);
-let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5;
+let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5,sculptMode=false,activeSculpt=null;\nconst raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const root=new THREE.Group();scene.add(root);
 let renderQueued=false;
 function setPreviewQuality(value){if(previewDpr===value)return;previewDpr=value;renderer.setPixelRatio(value);renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);requestRender()}
@@ -72,12 +81,47 @@ function requestRender(){if(renderQueued)return;renderQueued=true;requestAnimati
 function resize(){const w=canvas.clientWidth,h=canvas.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();requestRender()}
 new ResizeObserver(resize).observe(canvas);
 requestRender();
-canvas.addEventListener('pointerdown',e=>{drag=true;setPreviewQuality(.8);lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
-canvas.addEventListener('pointerup',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,1.35))});canvas.addEventListener('pointercancel',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});
-canvas.addEventListener('pointermove',e=>{if(!drag)return;rotY+=(e.clientX-lastX)*.009;rotX=Math.max(-.6,Math.min(.6,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY;root.rotation.set(rotX,rotY,0);requestRender()});
+function pointerNdc(e){const r=canvas.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1}
+function sculptAt(e){
+ if(!sculptMode||!vrm)return false;
+ pointerNdc(e);raycaster.setFromCamera(pointer,camera);
+ const hits=raycaster.intersectObject(vrm.scene,true).filter(h=>h.object.isMesh&&h.object.geometry?.attributes?.position);
+ if(!hits.length)return true;
+ const hit=hits[0],mesh=hit.object,geo=mesh.geometry,pos=geo.attributes.position;
+ if(!activeSculpt||activeSculpt.mesh!==mesh){
+  const baseName=$('newName').value.trim()||'Custom_Morph';const name=baseName+'_'+(entries.length+1);
+  const index=geo.morphAttributes.position?.length||0;
+  const delta=new THREE.Float32BufferAttribute(new Float32Array(pos.count*3),3);
+  delta.name=name;
+  geo.morphAttributes.position=geo.morphAttributes.position||[];
+  geo.morphAttributes.position.push(delta);geo.morphTargetsRelative=true;
+  mesh.morphTargetDictionary=mesh.morphTargetDictionary||{};
+  mesh.morphTargetInfluences=mesh.morphTargetInfluences||[];
+  mesh.morphTargetDictionary[name]=index;mesh.morphTargetInfluences[index]=1;
+  activeSculpt={mesh,index,delta,name};$('sculptInfo').textContent='Editing '+name+' on '+(mesh.name||'mesh');
+ }
+ const localPoint=mesh.worldToLocal(hit.point.clone());
+ const normal=hit.face.normal.clone().transformDirection(mesh.matrixWorld).transformDirection(mesh.matrixWorld.clone().invert()).normalize();
+ const radius=Number($('brushRadius').value),strength=Number($('brushStrength').value),arr=activeSculpt.delta.array;
+ for(let i=0;i<pos.count;i++){
+  const p=new THREE.Vector3().fromBufferAttribute(pos,i);
+  const d=p.distanceTo(localPoint);if(d>radius)continue;
+  const t=1-d/radius,fall=t*t*(3-2*t),k=strength*fall;
+  arr[i*3]+=normal.x*k;arr[i*3+1]+=normal.y*k;arr[i*3+2]+=normal.z*k;
+ }
+ activeSculpt.delta.needsUpdate=true;mesh.morphTargetInfluences[activeSculpt.index]=1;requestRender();return true;
+}
+canvas.addEventListener('pointerdown',e=>{if(sculptMode){drag=true;canvas.setPointerCapture(e.pointerId);sculptAt(e);return}drag=true;setPreviewQuality(.8);lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointerup',()=>{drag=false;if(!sculptMode)setPreviewQuality(Math.min(window.devicePixelRatio||1,1.35))});canvas.addEventListener('pointercancel',()=>{drag=false;setPreviewQuality(Math.min(window.devicePixelRatio||1,.85))});
+canvas.addEventListener('pointermove',e=>{if(!drag)return;if(sculptMode){sculptAt(e);return}rotY+=(e.clientX-lastX)*.009;rotX=Math.max(-.6,Math.min(.6,rotX+(e.clientY-lastY)*.006));lastX=e.clientX;lastY=e.clientY;root.rotation.set(rotX,rotY,0);requestRender()});
 canvas.addEventListener('wheel',e=>{zoom=Math.max(1.2,Math.min(8,zoom+e.deltaY*.003));camera.position.z=zoom;requestRender()});
 $('reset').onclick=()=>{rotY=rotX=0;root.rotation.set(0,0,0);zoom=3.5;camera.position.set(0,1.25,zoom);requestRender()};
 function setStatus(s){$('status').textContent=s}
+$('brushRadius').oninput=()=> $('radiusVal').textContent=Number($('brushRadius').value).toFixed(3);
+$('brushStrength').oninput=()=> $('strengthVal').textContent=Number($('brushStrength').value).toFixed(3);
+$('sculptToggle').onclick=()=>{sculptMode=!sculptMode;$('sculptToggle').textContent=sculptMode?'Disable Sculpt':'Enable Sculpt';$('finishSculpt').disabled=!sculptMode;canvas.style.cursor=sculptMode?'crosshair':'grab';$('sculptInfo').textContent=sculptMode?'Sculpt enabled: drag on the model to add vertex offsets.':'Sculpt disabled.'};
+$('finishSculpt').onclick=()=>{if(activeSculpt){activeSculpt.delta.needsUpdate=true;activeSculpt=null;scan();$('sculptInfo').textContent='Morph target created. Set its weight in the Morph Targets list.';setStatus('New morph target created in the loaded model session. Exporting a VRM file is not yet supported.')}};
+
 function scan(){
  entries=[];
  root.traverse(o=>{if(!o.isMesh||!o.morphTargetDictionary||!o.morphTargetInfluences)return;
@@ -120,7 +164,7 @@ $('file').onchange=async e=>{
   VRMUtils.rotateVRM0(vrm);
   const box=new THREE.Box3().setFromObject(vrm.scene),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
   vrm.scene.position.sub(center);camera.position.set(0,Math.max(1,size.y*.52),Math.max(2.3,size.y*2.1));zoom=camera.position.z;
-  scan();$('reset').disabled=false;$('download').disabled=true;
+  scan();$('reset').disabled=false;$('download').disabled=true;$('sculptToggle').disabled=false;$('sculptInfo').textContent='Sculpt is ready. Enable it and drag on a mesh.';
   requestRender();
   setStatus('Loaded '+file.name+' ('+(file.size/1048576).toFixed(1)+' MB). Preview is sharper when idle and temporarily lowers render resolution while dragging. Morph list shows 40 entries at a time. Large files can still exceed available RAM.');
  }catch(err){console.error(err);setStatus('Load failed: '+err.message)}
