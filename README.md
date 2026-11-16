@@ -32,19 +32,19 @@ Internet is required for CDN libraries. The VRM file itself is processed locally
 - `@pixiv/three-vrm`
 
 
-## Normal / Mermaid State Switcher
-- Normal ON and Mermaid ON preset buttons
+## Normal / Form B State Switcher
+- Normal ON and Form B ON preset buttons
 - Transition slider interpolates morph weights between the two presets
-- Assign selected morph targets to Normal or Mermaid using the current slider weights
-- Per-mesh visibility presets for each form (for example, hide legs in Mermaid and hide tail in Normal)
+- Assign selected morph targets to Normal or Form B using the current slider weights
+- Per-mesh visibility presets for each form (for example, hide legs in Form B and hide tail in Normal)
 - State assignments are session-only in this prototype; they are not saved into the VRM file
 - Mesh visibility changes switch at the midpoint of the transition; visibility itself cannot be smoothly interpolated
-- A real mermaid transformation requires the VRM to contain a tail mesh and suitable morph targets, or the user to create them with the sculpting tool. The switcher does not generate a tail mesh automatically
+- A real alternate-form transformation requires the VRM to contain a tail mesh and suitable morph targets, or the user to create them with the sculpting tool. The switcher does not generate a tail mesh automatically
 
 
-## Dolia Mermaid Setup
-- Added an **Auto-map Dolia meshes** helper.
-- It checks mesh names for common leg terms (leg, thigh, calf, foot, shoe, etc.) and tail/fin terms (tail, fin, fluke, mermaid).
-- Recognized leg meshes are set visible in Normal and hidden in Mermaid; recognized tail/fin meshes are set hidden in Normal and visible in Mermaid.
+## Generic Two-Form Setup
+- Added an **Auto-detect body meshes** helper.
+- It checks mesh names for common leg terms (leg, thigh, calf, foot, shoe, etc.) and tail/fin terms (tail, fin, fluke, alternate-form).
+- Recognized leg meshes are set visible in Normal and hidden in Form B; recognized tail/fin meshes are set hidden in Normal and visible in Form B.
 - Unmatched meshes remain unchanged; ambiguous names are skipped. Review the per-mesh visibility list after auto-mapping.
 - This helper only configures visibility. The VRM must already contain the tail/fin mesh; it does not create new geometry or export a modified VRM.
