@@ -39,7 +39,18 @@ input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-to
   <div class="row toolbar"><button class="btn" id="sculptToggle" disabled>Enable Sculpt</button><button class="btn secondary" id="finishSculpt" disabled>Finish target</button></div>
   <div class="hint" id="sculptInfo">Load a VRM to begin sculpting.</div>
  </div>
- <p class="hint">Drag to rotate · Pinch / wheel to zoom. In Sculpt mode, drag directly on the model to edit vertices.</p>
+ <div class="panel" style="margin-top:12px;background:#f8fbff">
+  <h2>Morph State Switcher</h2>
+  <p class="hint">Create Normal and Mermaid presets from existing or newly sculpted morph targets. Assign mesh visibility separately for legs, tail, fins, and accessories.</p>
+  <div class="row"><button class="btn secondary" id="normalBtn" disabled>Normal ON</button><button class="btn" id="mermaidBtn" disabled>Mermaid ON</button></div>
+  <div class="row" style="margin-top:12px"><label class="hint" for="stateMix">Transition</label><input id="stateMix" type="range" min="0" max="100" value="0" style="flex:1" disabled><b id="stateMixValue">0%</b></div>
+  <div class="row" style="margin-top:10px"><button class="btn secondary" id="assignNormal" disabled>Assign selected → Normal</button><button class="btn secondary" id="assignMermaid" disabled>Assign selected → Mermaid</button></div>
+  <h2 style="margin-top:14px">Mesh Visibility Presets</h2>
+  <p class="hint">Choose which meshes are visible in each form. For example, hide legs in Mermaid and hide the tail in Normal.</p>
+  <div id="meshStates" class="list"><div class="item hint">Load a VRM to configure mesh visibility.</div></div>
+  <div class="row" style="margin-top:10px"><button class="btn secondary" id="saveNormalVisibility" disabled>Save current as Normal</button><button class="btn secondary" id="saveMermaidVisibility" disabled>Save current as Mermaid</button></div>
+  <p class="hint" id="stateInfo">State presets are stored in this browser session. VRM export is not available yet.</p>
+ </div> <p class="hint">Drag to rotate · Pinch / wheel to zoom. In Sculpt mode, drag directly on the model to edit vertices.</p>
 </section>
 <section class="panel">
  <div class="row between"><h2>Morph Targets</h2><span class="hint" id="count">0 targets</span></div>
@@ -73,7 +84,8 @@ const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(32,1,.01,100);
 scene.add(new THREE.HemisphereLight(0xffffff,0x8999b5,2));
 const key=new THREE.DirectionalLight(0xffffff,2.1);key.position.set(2,4,3);scene.add(key);
 const floor=new THREE.GridHelper(5,20,0xc8d5e5,0xe0e8f2);floor.position.y=-.02;scene.add(floor);
-let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5,sculptMode=false,activeSculpt=null;\nconst raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
+let vrm=null,gltfData=null, entries=[], history=[], drag=false,lastX=0,lastY=0,rotY=0,rotX=0,zoom=3.5,sculptMode=false,activeSculpt=null;\nlet stateMorphs={normal:new Map(),mermaid:new Map()},meshPresets={normal:new Map(),mermaid:new Map()},stateMeshes=[];
+const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
 const root=new THREE.Group();scene.add(root);
 let renderQueued=false;
 function setPreviewQuality(value){if(previewDpr===value)return;previewDpr=value;renderer.setPixelRatio(value);renderer.setSize(canvas.clientWidth,canvas.clientHeight,false);requestRender()}
@@ -122,13 +134,65 @@ $('brushStrength').oninput=()=> $('strengthVal').textContent=Number($('brushStre
 $('sculptToggle').onclick=()=>{sculptMode=!sculptMode;$('sculptToggle').textContent=sculptMode?'Disable Sculpt':'Enable Sculpt';$('finishSculpt').disabled=!sculptMode;canvas.style.cursor=sculptMode?'crosshair':'grab';$('sculptInfo').textContent=sculptMode?'Sculpt enabled: drag on the model to add vertex offsets.':'Sculpt disabled.'};
 $('finishSculpt').onclick=()=>{if(activeSculpt){activeSculpt.delta.needsUpdate=true;activeSculpt=null;scan();$('sculptInfo').textContent='Morph target created. Set its weight in the Morph Targets list.';setStatus('New morph target created in the loaded model session. Exporting a VRM file is not yet supported.')}};
 
+function allMeshes(){const a=[];if(vrm)vrm.scene.traverse(o=>{if(o.isMesh)a.push(o)});return a}
+function renderMeshStates(){
+ const host=$('meshStates');host.innerHTML='';
+ stateMeshes=allMeshes();
+ stateMeshes.forEach((m,i)=>{
+  const row=document.createElement('div');row.className='item';
+  const title=document.createElement('div');title.className='itemtop';
+  const name=document.createElement('span');name.textContent=m.name||('Mesh '+(i+1));name.style.flex='1';name.style.fontSize='12px';title.append(name);row.append(title);
+  const controls=document.createElement('div');controls.className='row';
+  ['normal','mermaid'].forEach(form=>{
+   const lab=document.createElement('label');lab.className='hint';
+   const cb=document.createElement('input');cb.type='checkbox';cb.checked=meshPresets[form].has(m.uuid)?meshPresets[form].get(m.uuid):m.visible;
+   cb.onchange=()=>meshPresets[form].set(m.uuid,cb.checked);
+   lab.append(cb,document.createTextNode(form==='normal'?' Normal':' Mermaid'));controls.append(lab);
+  });
+  row.append(controls);host.append(row);
+ });
+ ['saveNormalVisibility','saveMermaidVisibility'].forEach(id=>$(id).disabled=!stateMeshes.length);
+}
+function setForm(form){
+ if(!vrm)return;
+ const other=form==='normal'?'mermaid':'normal';
+ const assigned=new Set([...stateMorphs.normal.keys(),...stateMorphs.mermaid.keys()]);
+ entries.forEach(e=>{if(assigned.has(e.key))e.mesh.morphTargetInfluences[e.index]=stateMorphs[form].has(e.key)?stateMorphs[form].get(e.key):0});
+ const preset=meshPresets[form];
+ stateMeshes.forEach(m=>{if(preset.has(m.uuid))m.visible=preset.get(m.uuid)});
+ $('stateMix').value=form==='normal'?0:100;$('stateMixValue').textContent=$('stateMix').value+'%';
+ $('stateInfo').textContent=(form==='normal'?'Normal':'Mermaid')+' preset active. Unassigned morph targets are left unchanged.';
+ renderList();requestRender();
+}
+function applyTransition(value){
+ if(!vrm)return;const t=Number(value)/100;
+ const keys=new Set([...stateMorphs.normal.keys(),...stateMorphs.mermaid.keys()]);
+ entries.forEach(e=>{if(!keys.has(e.key))return;const a=stateMorphs.normal.get(e.key)||0,b=stateMorphs.mermaid.get(e.key)||0;e.mesh.morphTargetInfluences[e.index]=a+(b-a)*t});
+ stateMeshes.forEach(m=>{
+  const a=meshPresets.normal.has(m.uuid)?meshPresets.normal.get(m.uuid):m.visible;
+  const b=meshPresets.mermaid.has(m.uuid)?meshPresets.mermaid.get(m.uuid):m.visible;
+  if(a===b)m.visible=a;else m.visible=t<.5?a:b;
+ });
+ $('stateMixValue').textContent=value+'%';requestRender();renderList();
+}
+function assignSelected(form){
+ const selected=entries.filter(e=>e.selected);if(!selected.length){$('stateInfo').textContent='Select morph targets in the list first.';return}
+ selected.forEach(e=>stateMorphs[form].set(e.key,e.mesh.morphTargetInfluences[e.index]||0));
+ $('stateInfo').textContent=selected.length+' morph target(s) assigned to '+(form==='normal'?'Normal':'Mermaid')+'. Set their desired weights before assigning.';
+}
+$('normalBtn').onclick=()=>setForm('normal');$('mermaidBtn').onclick=()=>setForm('mermaid');
+$('stateMix').oninput=e=>applyTransition(e.target.value);
+$('assignNormal').onclick=()=>assignSelected('normal');$('assignMermaid').onclick=()=>assignSelected('mermaid');
+$('saveNormalVisibility').onclick=()=>{stateMeshes.forEach(m=>meshPresets.normal.set(m.uuid,m.visible));$('stateInfo').textContent='Current mesh visibility saved as Normal.';renderMeshStates()};
+$('saveMermaidVisibility').onclick=()=>{stateMeshes.forEach(m=>meshPresets.mermaid.set(m.uuid,m.visible));$('stateInfo').textContent='Current mesh visibility saved as Mermaid.';renderMeshStates()};
+
 function scan(){
  entries=[];
  root.traverse(o=>{if(!o.isMesh||!o.morphTargetDictionary||!o.morphTargetInfluences)return;
   for(const [name,index] of Object.entries(o.morphTargetDictionary))entries.push({mesh:o,name,index,key:entries.length});
  });
  $('count').textContent=entries.length+' targets';$('modelInfo').textContent=vrm?.meta?.name||'VRM loaded';
- visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll'].forEach(id=>$(id).disabled=!entries.length);
+ visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll','normalBtn','mermaidBtn','stateMix','assignNormal','assignMermaid'].forEach(id=>$(id).disabled=!entries.length);renderMeshStates();
 }
 let visibleTargetLimit=40;
 function renderList(){
@@ -160,13 +224,13 @@ $('file').onchange=async e=>{
   const buffer=await file.arrayBuffer();const gltf=await loader.parseAsync(buffer,'');
   gltfData=gltf;vrm=gltf.userData.vrm;if(!vrm)throw new Error('VRM extension was not recognized.');
   if(root.children.length){for(const old of [...root.children]){old.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];for(const m of mats){for(const v of Object.values(m))if(v&&v.isTexture)v.dispose();m.dispose()}}});root.remove(old)}}
-  history=[];$('undo').disabled=true;root.add(vrm.scene);
+  history=[];stateMorphs={normal:new Map(),mermaid:new Map()};meshPresets={normal:new Map(),mermaid:new Map()};$('undo').disabled=true;root.add(vrm.scene);
   VRMUtils.rotateVRM0(vrm);
   const box=new THREE.Box3().setFromObject(vrm.scene),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
   vrm.scene.position.sub(center);camera.position.set(0,Math.max(1,size.y*.52),Math.max(2.3,size.y*2.1));zoom=camera.position.z;
   scan();$('reset').disabled=false;$('download').disabled=true;$('sculptToggle').disabled=false;$('sculptInfo').textContent='Sculpt is ready. Enable it and drag on a mesh.';
   requestRender();
-  setStatus('Loaded '+file.name+' ('+(file.size/1048576).toFixed(1)+' MB). Preview is sharper when idle and temporarily lowers render resolution while dragging. Morph list shows 40 entries at a time. Large files can still exceed available RAM.');
+  $('stateInfo').textContent='Assign selected morphs to each form, then configure mesh visibility.';setStatus('Loaded '+file.name+' ('+(file.size/1048576).toFixed(1)+' MB). Preview is sharper when idle and temporarily lowers render resolution while dragging. Morph list shows 40 entries at a time. Large files can still exceed available RAM.');
  }catch(err){console.error(err);setStatus('Load failed: '+err.message)}
 };
 function bake(list){
