@@ -40,6 +40,12 @@ input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-to
   <div class="hint" id="sculptInfo">Load a VRM to begin sculpting.</div>
  </div>
  <div class="panel" style="margin-top:12px;background:#f8fbff">
+  <h2>Dolia Mermaid Setup</h2>
+  <p class="hint">Quickly map mesh visibility for a Normal ↔ Mermaid transformation. Mesh names are checked for common words such as leg, foot, tail, and fin. Unmatched meshes are left visible in both forms.</p>
+  <div class="row"><button class="btn" id="autoDoliaMap" disabled>Auto-map Dolia meshes</button></div>
+  <p class="hint" id="doliaInfo">Load a VRM first. A tail mesh must already exist in the model or be added separately.</p>
+ </div>
+ <div class="panel" style="margin-top:12px;background:#f8fbff">
   <h2>Morph State Switcher</h2>
   <p class="hint">Create Normal and Mermaid presets from existing or newly sculpted morph targets. Assign mesh visibility separately for legs, tail, fins, and accessories.</p>
   <div class="row"><button class="btn secondary" id="normalBtn" disabled>Normal ON</button><button class="btn" id="mermaidBtn" disabled>Mermaid ON</button></div>
@@ -155,6 +161,26 @@ function renderMeshStates(){
  });
  ['saveNormalVisibility','saveMermaidVisibility'].forEach(id=>$(id).disabled=!stateMeshes.length);
 }
+function autoMapDolia(){
+ if(!vrm){$('doliaInfo').textContent='Load a VRM first.';return}
+ let legs=0,tails=0,ambiguous=0;
+ const legPattern=/\\b(leg|legs|thigh|calf|shin|foot|feet|ankle|knee|shoe|shoes|boot|boots)\\b/i;
+ const tailPattern=/\\b(tail|tails|fin|fins|fluke|mermaid)\\b/i;
+ stateMeshes.forEach(m=>{
+  const n=(m.name||'').replace(/[_\\-.]+/g,' ');
+  const isLeg=legPattern.test(n),isTail=tailPattern.test(n);
+  if(isLeg&&!isTail){
+   meshPresets.normal.set(m.uuid,true);meshPresets.mermaid.set(m.uuid,false);legs++;
+  }else if(isTail&&!isLeg){
+   meshPresets.normal.set(m.uuid,false);meshPresets.mermaid.set(m.uuid,true);tails++;
+  }else if(isLeg&&isTail){ambiguous++}
+ });
+ renderMeshStates();
+ if(legs||tails){setForm('normal');$('doliaInfo').textContent='Auto-map complete: '+legs+' leg mesh(es) hide in Mermaid; '+tails+' tail/fin mesh(es) show in Mermaid.'+(ambiguous?' '+ambiguous+' ambiguous mesh(es) were skipped.':'')+' Check the mesh list before switching forms.';}
+ else{$('doliaInfo').textContent='No leg or tail meshes were recognized by name. Rename meshes with words such as Leg, Foot, Tail, or Fin, or set visibility manually below.'}
+}
+$('autoDoliaMap').onclick=autoMapDolia;
+
 function setForm(form){
  if(!vrm)return;
  const other=form==='normal'?'mermaid':'normal';
@@ -194,7 +220,7 @@ function scan(){
   for(const [name,index] of Object.entries(o.morphTargetDictionary))entries.push({mesh:o,name,index,key:entries.length});
  });
  $('count').textContent=entries.length+' targets';$('modelInfo').textContent=vrm?.meta?.name||'VRM loaded';
- visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll','normalBtn','mermaidBtn','stateMix','assignNormal','assignMermaid'].forEach(id=>$(id).disabled=!entries.length);renderMeshStates();
+ visibleTargetLimit=40;renderList();['selectAll','clearAll','resetMorph','bakeSelected','bakeAll','normalBtn','mermaidBtn','stateMix','assignNormal','assignMermaid'].forEach(id=>$(id).disabled=!entries.length);$('autoDoliaMap').disabled=!vrm;renderMeshStates();
 }
 let visibleTargetLimit=40;
 function renderList(){
