@@ -40,21 +40,21 @@ input[type=file]{display:none}.filelabel{display:inline-block}.toolbar{margin-to
   <div class="hint" id="sculptInfo">Load a VRM to begin sculpting.</div>
  </div>
  <div class="panel" style="margin-top:12px;background:#f8fbff">
-  <h2>Dolia Mermaid Setup</h2>
-  <p class="hint">Quickly map mesh visibility for a Normal ↔ Mermaid transformation. Mesh names are checked for common words such as leg, foot, tail, and fin. Unmatched meshes are left visible in both forms.</p>
-  <div class="row"><button class="btn" id="autoDoliaMap" disabled>Auto-map Dolia meshes</button></div>
-  <p class="hint" id="doliaInfo">Load a VRM first. A tail mesh must already exist in the model or be added separately.</p>
+  <h2>Body Form Setup</h2>
+  <p class="hint">Quickly configure mesh visibility for two character forms. The tool checks mesh names for common body-part terms. Unmatched meshes keep their current visibility.</p>
+  <div class="row"><button class="btn" id="autoDoliaMap" disabled>Auto-detect body meshes</button></div>
+  <p class="hint" id="doliaInfo">Load a VRM first. Alternate-form meshes must already exist in the model or be added separately.</p>
  </div>
  <div class="panel" style="margin-top:12px;background:#f8fbff">
   <h2>Morph State Switcher</h2>
-  <p class="hint">Create Normal and Mermaid presets from existing or newly sculpted morph targets. Assign mesh visibility separately for legs, tail, fins, and accessories.</p>
-  <div class="row"><button class="btn secondary" id="normalBtn" disabled>Normal ON</button><button class="btn" id="mermaidBtn" disabled>Mermaid ON</button></div>
+  <p class="hint">Create two form presets from existing or newly sculpted morph targets. Assign mesh visibility separately for legs, tail, fins, and accessories.</p>
+  <div class="row"><button class="btn secondary" id="normalBtn" disabled>Normal ON</button><button class="btn" id="mermaidBtn" disabled>Form B ON</button></div>
   <div class="row" style="margin-top:12px"><label class="hint" for="stateMix">Transition</label><input id="stateMix" type="range" min="0" max="100" value="0" style="flex:1" disabled><b id="stateMixValue">0%</b></div>
-  <div class="row" style="margin-top:10px"><button class="btn secondary" id="assignNormal" disabled>Assign selected → Normal</button><button class="btn secondary" id="assignMermaid" disabled>Assign selected → Mermaid</button></div>
+  <div class="row" style="margin-top:10px"><button class="btn secondary" id="assignNormal" disabled>Assign selected → Normal</button><button class="btn secondary" id="assignMermaid" disabled>Assign selected → Form B</button></div>
   <h2 style="margin-top:14px">Mesh Visibility Presets</h2>
-  <p class="hint">Choose which meshes are visible in each form. For example, hide legs in Mermaid and hide the tail in Normal.</p>
+  <p class="hint">Choose which meshes are visible in each form. For example, hide selected body meshes in Form B and show them in Normal.</p>
   <div id="meshStates" class="list"><div class="item hint">Load a VRM to configure mesh visibility.</div></div>
-  <div class="row" style="margin-top:10px"><button class="btn secondary" id="saveNormalVisibility" disabled>Save current as Normal</button><button class="btn secondary" id="saveMermaidVisibility" disabled>Save current as Mermaid</button></div>
+  <div class="row" style="margin-top:10px"><button class="btn secondary" id="saveNormalVisibility" disabled>Save current as Normal</button><button class="btn secondary" id="saveMermaidVisibility" disabled>Save current as Form B</button></div>
   <p class="hint" id="stateInfo">State presets are stored in this browser session. VRM export is not available yet.</p>
  </div> <p class="hint">Drag to rotate · Pinch / wheel to zoom. In Sculpt mode, drag directly on the model to edit vertices.</p>
 </section>
@@ -155,7 +155,7 @@ function renderMeshStates(){
    const lab=document.createElement('label');lab.className='hint';
    const cb=document.createElement('input');cb.type='checkbox';cb.checked=meshPresets[form].has(m.uuid)?meshPresets[form].get(m.uuid):m.visible;
    cb.onchange=()=>meshPresets[form].set(m.uuid,cb.checked);
-   lab.append(cb,document.createTextNode(form==='normal'?' Normal':' Mermaid'));controls.append(lab);
+   lab.append(cb,document.createTextNode(form==='normal'?' Normal':' Form B'));controls.append(lab);
   });
   row.append(controls);host.append(row);
  });
@@ -176,8 +176,8 @@ function autoMapDolia(){
   }else if(isLeg&&isTail){ambiguous++}
  });
  renderMeshStates();
- if(legs||tails){setForm('normal');$('doliaInfo').textContent='Auto-map complete: '+legs+' leg mesh(es) hide in Mermaid; '+tails+' tail/fin mesh(es) show in Mermaid.'+(ambiguous?' '+ambiguous+' ambiguous mesh(es) were skipped.':'')+' Check the mesh list before switching forms.';}
- else{$('doliaInfo').textContent='No leg or tail meshes were recognized by name. Rename meshes with words such as Leg, Foot, Tail, or Fin, or set visibility manually below.'}
+ if(legs||tails){setForm('normal');$('doliaInfo').textContent='Auto-detection complete: '+legs+' leg mesh(es) hide in Form B; '+tails+' tail/fin mesh(es) show in Form B.'+(ambiguous?' '+ambiguous+' ambiguous mesh(es) were skipped.':'')+' Check the mesh list before switching forms.';}
+ else{$('doliaInfo').textContent='No matching body meshes were recognized by name. Rename meshes with words such as Leg, Foot, Tail, or Fin, or set visibility manually below.'}
 }
 $('autoDoliaMap').onclick=autoMapDolia;
 
@@ -189,7 +189,7 @@ function setForm(form){
  const preset=meshPresets[form];
  stateMeshes.forEach(m=>{if(preset.has(m.uuid))m.visible=preset.get(m.uuid)});
  $('stateMix').value=form==='normal'?0:100;$('stateMixValue').textContent=$('stateMix').value+'%';
- $('stateInfo').textContent=(form==='normal'?'Normal':'Mermaid')+' preset active. Unassigned morph targets are left unchanged.';
+ $('stateInfo').textContent=(form==='normal'?'Normal':'Form B')+' preset active. Unassigned morph targets are left unchanged.';
  renderList();requestRender();
 }
 function applyTransition(value){
@@ -206,13 +206,13 @@ function applyTransition(value){
 function assignSelected(form){
  const selected=entries.filter(e=>e.selected);if(!selected.length){$('stateInfo').textContent='Select morph targets in the list first.';return}
  selected.forEach(e=>stateMorphs[form].set(e.key,e.mesh.morphTargetInfluences[e.index]||0));
- $('stateInfo').textContent=selected.length+' morph target(s) assigned to '+(form==='normal'?'Normal':'Mermaid')+'. Set their desired weights before assigning.';
+ $('stateInfo').textContent=selected.length+' morph target(s) assigned to '+(form==='normal'?'Normal':'Form B')+'. Set their desired weights before assigning.';
 }
 $('normalBtn').onclick=()=>setForm('normal');$('mermaidBtn').onclick=()=>setForm('mermaid');
 $('stateMix').oninput=e=>applyTransition(e.target.value);
 $('assignNormal').onclick=()=>assignSelected('normal');$('assignMermaid').onclick=()=>assignSelected('mermaid');
 $('saveNormalVisibility').onclick=()=>{stateMeshes.forEach(m=>meshPresets.normal.set(m.uuid,m.visible));$('stateInfo').textContent='Current mesh visibility saved as Normal.';renderMeshStates()};
-$('saveMermaidVisibility').onclick=()=>{stateMeshes.forEach(m=>meshPresets.mermaid.set(m.uuid,m.visible));$('stateInfo').textContent='Current mesh visibility saved as Mermaid.';renderMeshStates()};
+$('saveMermaidVisibility').onclick=()=>{stateMeshes.forEach(m=>meshPresets.mermaid.set(m.uuid,m.visible));$('stateInfo').textContent='Current mesh visibility saved as Form B.';renderMeshStates()};
 
 function scan(){
  entries=[];
