@@ -30,3 +30,13 @@ Internet is required for CDN libraries. The VRM file itself is processed locally
 ## Libraries
 - Three.js
 - `@pixiv/three-vrm`
+
+
+## Normal / Mermaid State Switcher
+- Normal ON and Mermaid ON preset buttons
+- Transition slider interpolates morph weights between the two presets
+- Assign selected morph targets to Normal or Mermaid using the current slider weights
+- Per-mesh visibility presets for each form (for example, hide legs in Mermaid and hide tail in Normal)
+- State assignments are session-only in this prototype; they are not saved into the VRM file
+- Mesh visibility changes switch at the midpoint of the transition; visibility itself cannot be smoothly interpolated
+- A real mermaid transformation requires the VRM to contain a tail mesh and suitable morph targets, or the user to create them with the sculpting tool. The switcher does not generate a tail mesh automatically
