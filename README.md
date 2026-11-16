@@ -1,22 +1,32 @@
 # Aster-VRM-MorphTarget-Baker
 
-A mobile-friendly, browser-side VRM morph-target inspection and baking workspace.
+Android-first, browser-side VRM morph-target inspection and vertex-sculpting prototype.
 
-## Scope
-- VRM input (VRM 0.x / VRM 1.0 through the three-vrm loader)
-- 3D preview and morph-target search/list
-- Large VRM Mode for files 100 MB and above (reduced preview resolution, lower resolution while dragging, and paged morph-target list of 40 entries)
-- Releases old preview resources when replacing a loaded model
-- Per-target weight preview
-- Selected Bake and Batch Bake (in-memory preview stage)
-- VRM-only project: no GLB export or GLB download
+## Current features
+- VRM input: VRM 0.x / VRM 1.0 via `@pixiv/three-vrm`
+- 3D preview with touch rotation and zoom
+- Existing morph-target search, weight sliders, selection, and preview bake
+- Create a new morph target by sculpting mesh vertices directly in the 3D preview
+- Brush radius and strength controls
+- Sculpted deltas are stored as a new relative position morph target on the touched mesh
+- Browser-side processing; model bytes are not uploaded
+- No GLB export and no GLB disguised as VRM
 
-## Current prototype status
-The current build loads VRM files, previews morph weights, and applies selected morph deltas to the live base position attributes. Large VRM Mode is a best-effort mobile optimization, not a guaranteed file-size limit. It reduces GPU load during preview and avoids rendering hundreds of morph-target controls at once. The GLTF/VRM parsing and texture decoding still happen in the browser main thread in this prototype, so a large or complex file may temporarily freeze the page: actual load capacity depends on available Android RAM, GPU memory, mesh complexity, and texture sizes. The browser still needs memory for the source file and decoded model data. This is currently a **preview-stage bake only**: it does not yet remove baked morph channels or remap VRM expression binds in the original glTF document. A VRM-preserving binary writer is not yet implemented, so Download VRM is intentionally disabled rather than generating an invalid file or disguising GLB as VRM.
+## Important limitations
+This is an early creator prototype. Newly sculpted morph targets exist in the loaded model's in-memory Three.js scene only. **VRM binary export is not implemented yet**, so the Download VRM button remains disabled. Reloading or closing the page discards newly created targets. The current sculpt brush pushes vertices along the hit surface normal; it is not yet a full Blender-style brush system and does not include symmetry, smoothing, masking, or undo for individual sculpt strokes.
 
-## Run
-Enable GitHub Pages from **Settings → Pages → Deploy from a branch → main → / (root)**, then open the published page in Chrome. Internet is required for CDN libraries; model bytes are processed locally in the browser.
+The existing Bake buttons are preview-stage operations. They do not yet remove baked morph channels or remap VRM expression binds in the original GLB/VRM document. Do not use this prototype as a production VRM exporter.
+
+Large VRM files can still exceed available Android RAM. Parsing and texture decoding happen in the browser main thread; practical capacity depends on available memory, GPU, mesh complexity, and texture sizes.
+
+## Run with GitHub Pages
+1. Open repository Settings → Pages.
+2. Choose Deploy from a branch.
+3. Select `main` and `/(root)`.
+4. Open the published page in Chrome on Android.
+
+Internet is required for CDN libraries. The VRM file itself is processed locally in the browser.
 
 ## Libraries
 - Three.js
-- @pixiv/three-vrm
+- `@pixiv/three-vrm`
