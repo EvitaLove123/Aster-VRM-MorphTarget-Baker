@@ -164,10 +164,10 @@ function renderMeshStates(){
 function autoMapDolia(){
  if(!vrm){$('doliaInfo').textContent='Load a VRM first.';return}
  let legs=0,tails=0,ambiguous=0;
- const legPattern=/\\b(leg|legs|thigh|calf|shin|foot|feet|ankle|knee|shoe|shoes|boot|boots)\\b/i;
- const tailPattern=/\\b(tail|tails|fin|fins|fluke|mermaid)\\b/i;
+ const legPattern=/\b(leg|legs|thigh|calf|shin|foot|feet|ankle|knee|shoe|shoes|boot|boots)\b/i;
+ const tailPattern=/\b(tail|tails|fin|fins|fluke|mermaid)\b/i;
  stateMeshes.forEach(m=>{
-  const n=(m.name||'').replace(/[_\\-.]+/g,' ');
+  const n=(m.name||'').replace(/[_\-.]+/g,' ');
   const isLeg=legPattern.test(n),isTail=tailPattern.test(n);
   if(isLeg&&!isTail){
    meshPresets.normal.set(m.uuid,true);meshPresets.mermaid.set(m.uuid,false);legs++;
