@@ -40,3 +40,11 @@ Internet is required for CDN libraries. The VRM file itself is processed locally
 - State assignments are session-only in this prototype; they are not saved into the VRM file
 - Mesh visibility changes switch at the midpoint of the transition; visibility itself cannot be smoothly interpolated
 - A real mermaid transformation requires the VRM to contain a tail mesh and suitable morph targets, or the user to create them with the sculpting tool. The switcher does not generate a tail mesh automatically
+
+
+## Dolia Mermaid Setup
+- Added an **Auto-map Dolia meshes** helper.
+- It checks mesh names for common leg terms (leg, thigh, calf, foot, shoe, etc.) and tail/fin terms (tail, fin, fluke, mermaid).
+- Recognized leg meshes are set visible in Normal and hidden in Mermaid; recognized tail/fin meshes are set hidden in Normal and visible in Mermaid.
+- Unmatched meshes remain unchanged; ambiguous names are skipped. Review the per-mesh visibility list after auto-mapping.
+- This helper only configures visibility. The VRM must already contain the tail/fin mesh; it does not create new geometry or export a modified VRM.
