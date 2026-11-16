@@ -101,7 +101,7 @@ function sculptAt(e){
   activeSculpt={mesh,index,delta,name};$('sculptInfo').textContent='Editing '+name+' on '+(mesh.name||'mesh');
  }
  const localPoint=mesh.worldToLocal(hit.point.clone());
- const normal=hit.face.normal.clone().transformDirection(mesh.matrixWorld).transformDirection(mesh.matrixWorld.clone().invert()).normalize();
+ const normal=hit.face.normal.clone().normalize();
  const radius=Number($('brushRadius').value),strength=Number($('brushStrength').value),arr=activeSculpt.delta.array;
  for(let i=0;i<pos.count;i++){
   const p=new THREE.Vector3().fromBufferAttribute(pos,i);
